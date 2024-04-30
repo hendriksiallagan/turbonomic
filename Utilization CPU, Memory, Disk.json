@@ -1,0 +1,385 @@
+{
+    "annotations": {
+        "list": [{
+            "builtIn": 1,
+            "datasource": {
+                "type": "datasource",
+                "uid": "grafana"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "target": {
+                "limit": 100,
+                "matchAny": false,
+                "tags": [],
+                "type": "dashboard"
+            },
+            "type": "dashboard"
+        }]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": 91,
+    "links": [],
+    "liveNow": false,
+    "panels": [{
+            "datasource": {
+                "uid": "$DB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [{
+                            "color": "green",
+                            "value": null
+                        }]
+                    }
+                },
+                "overrides": [{
+                        "matcher": {
+                            "id": "byRegexp",
+                            "options": "/Cost/"
+                        },
+                        "properties": [{
+                            "id": "unit",
+                            "value": "currencyUSD"
+                        }]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byRegexp",
+                            "options": "/\\(GB\\)/"
+                        },
+                        "properties": [{
+                            "id": "unit",
+                            "value": "decgbytes"
+                        }]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Total Cost ($)"
+                        },
+                        "properties": [{
+                            "id": "color",
+                            "value": {
+                                "fixedColor": "red",
+                                "mode": "fixed"
+                            }
+                        }]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 5,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            },
+            "id": 6,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "sum"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "text": {},
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "10.2.3",
+            "targets": [{
+                "datasource": {
+                    "uid": "$DB"
+                },
+                "panelId": 2,
+                "refId": "A"
+            }],
+            "title": "Total Information",
+            "transformations": [{
+                "id": "seriesToColumns",
+                "options": {
+                    "byField": "VM Name"
+                }
+            }],
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "uid": "$DB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "filterable": true,
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [{
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    }
+                },
+                "overrides": [{
+                    "matcher": {
+                        "id": "byName",
+                        "options": "VM Name"
+                    },
+                    "properties": [{
+                        "id": "custom.width",
+                        "value": 198
+                    }]
+                }]
+            },
+            "gridPos": {
+                "h": 20,
+                "w": 24,
+                "x": 0,
+                "y": 5
+            },
+            "id": 2,
+            "options": {
+                "cellHeight": "sm",
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "frameIndex": 2,
+                "showHeader": true,
+                "sortBy": [{
+                    "desc": true,
+                    "displayName": "Storage Average (GB)"
+                }]
+            },
+            "pluginVersion": "10.2.3",
+            "targets": [{
+                    "datasource": {
+                        "uid": "$DB"
+                    },
+                    "format": "table",
+                    "group": [],
+                    "metricColumn": "none",
+                    "rawQuery": true,
+                    "rawSql": "WITH last_num_cpus AS\n(\n  select\n  \tdistinct on (e.oid)\n  \te.oid,\n  \te.name,\n  \t(e.attrs->>'num_cpus')::integer as \"num_cpus\"\n  from entity e\n  where\n  \te.\"type\" = 'VIRTUAL_MACHINE'\n    AND e.oid IN (${VM_OID})\n  order by e.oid, e.last_seen DESC\n),\navg_num_cpu as\n(\n\tselect\n\t\thea.entity_oid as oid,\n\t\tavg(hea.int_value) as \"num_cpus\"\n\tfrom historical_entity_attrs hea\n\tWHERE\n  \t\t$__timeFilter(hea.time)\n  \t    AND hea.type = 'NUM_VCPU'\n        AND hea.entity_oid IN (${VM_OID})\n  \tgroup by hea.entity_oid \n)\nSELECT\n    lnc.name as \"VM Name\",\n    coalesce(a.num_cpus, lnc.num_cpus) as \"Average number of vCPU(s)\"\nfrom last_num_cpus lnc\nleft join avg_num_cpu a on a.oid = lnc.oid\norder by lnc.name ASC",
+                    "refId": "A",
+                    "select": [
+                        [{
+                            "params": [
+                                "savings"
+                            ],
+                            "type": "column"
+                        }]
+                    ],
+                    "table": "completed_action",
+                    "timeColumn": "recommendation_time",
+                    "timeColumnType": "timestamp",
+                    "where": [{
+                        "name": "$__timeFilter",
+                        "params": [],
+                        "type": "macro"
+                    }]
+                },
+                {
+                    "datasource": {
+                        "uid": "$DB"
+                    },
+                    "format": "table",
+                    "group": [],
+                    "hide": false,
+                    "metricColumn": "none",
+                    "rawQuery": true,
+                    "rawSql": "with memory as (\n  SELECT\n    e.name,\n  --m.type,\n    avg(m.capacity)/(1024*1024) as \"value\"\n  FROM metric m\n  JOIN entity e ON e.oid = m.entity_oid\n  WHERE\n    $__timeFilter(time)\n    AND entity_oid IN (${VM_OID})\n    AND m.type = 'VMEM'\n  GROUP BY e.name, m.type\n  ORDER BY 1\n)\nselect\n  distinct e.name as \"VM Name\",\n  coalesce(m.value,0) as \"vMem Average (GB)\"\nfrom entity e\nleft outer join memory m on m.name = e.name \nwhere e.oid IN (${VM_OID})",
+                    "refId": "B",
+                    "select": [
+                        [{
+                            "params": [
+                                "value"
+                            ],
+                            "type": "column"
+                        }]
+                    ],
+                    "timeColumn": "time",
+                    "where": [{
+                        "name": "$__timeFilter",
+                        "params": [],
+                        "type": "macro"
+                    }]
+                },
+                {
+                    "datasource": {
+                        "uid": "$DB"
+                    },
+                    "format": "table",
+                    "group": [],
+                    "metricColumn": "none",
+                    "rawQuery": true,
+                    "rawSql": "with storage as (\n  SELECT\n    e.name,\n--  m.type,\n    avg(m.consumed)/(1024) as \"value\"\n    FROM metric m\n    JOIN entity e ON e.oid = m.entity_oid\n    WHERE\n    $__timeFilter(time)\n    AND entity_oid IN (${VM_OID})\n    AND m.type = 'STORAGE_PROVISIONED'\n    GROUP BY e.name, m.type\n    ORDER BY 1\n)\nselect\n  distinct e.name as \"VM Name\",\n  coalesce(s.value,0) as \"Storage Average (GB)\"\nfrom entity e\nleft outer join storage s on s.name = e.name \nwhere e.oid IN (${VM_OID})",
+                    "refId": "C",
+                    "select": [
+                        [{
+                            "params": [
+                                "value"
+                            ],
+                            "type": "column"
+                        }]
+                    ],
+                    "timeColumn": "time",
+                    "where": [{
+                        "name": "$__timeFilter",
+                        "params": [],
+                        "type": "macro"
+                    }]
+                }
+            ],
+            "title": "VM Capacity",
+            "transformations": [{
+                "id": "seriesToColumns",
+                "options": {
+                    "byField": "VM Name"
+                }
+            }],
+            "type": "table"
+        }
+    ],
+    "refresh": "",
+    "schemaVersion": 39,
+    "tags": [],
+    "templating": {
+        "list": [{
+                "current": {
+                    "selected": false,
+                    "text": "Turbo Timescale",
+                    "value": "izlauSYVz"
+                },
+                "hide": 2,
+                "includeAll": false,
+                "multi": false,
+                "name": "DB",
+                "options": [],
+                "query": "postgres",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "type": "datasource"
+            },
+            {
+                "current": {
+                    "selected": false,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "uid": "$DB"
+                },
+                "definition": "select name from entity where \"type\" = 'GROUP' order by name",
+                "hide": 0,
+                "includeAll": true,
+                "label": "Group Name",
+                "multi": true,
+                "name": "GROUP_NAME",
+                "options": [],
+                "query": "select name from entity where \"type\" = 'GROUP' order by name",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 0,
+                "tagValuesQuery": "",
+                "tagsQuery": "",
+                "type": "query",
+                "useTags": false
+            },
+            {
+                "current": {
+                    "selected": false,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "uid": "$DB"
+                },
+                "definition": "select oid\nfrom entity e\nwhere e.\"type\" = 'GROUP'\nAND name IN (${GROUP_NAME})",
+                "hide": 2,
+                "includeAll": true,
+                "label": "",
+                "multi": true,
+                "name": "GROUP_OID",
+                "options": [],
+                "query": "select oid\nfrom entity e\nwhere e.\"type\" = 'GROUP'\nAND name IN (${GROUP_NAME})",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 0,
+                "tagValuesQuery": "",
+                "tagsQuery": "",
+                "type": "query",
+                "useTags": false
+            },
+            {
+                "current": {
+                    "selected": false,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "uid": "$DB"
+                },
+                "definition": "select oid\nfrom entity e\njoin scope s ON e.oid = s.scoped_oid\nwhere s.scoped_type = 'VIRTUAL_MACHINE'\nAND s.seed_oid IN (${GROUP_OID})",
+                "hide": 2,
+                "includeAll": true,
+                "label": "",
+                "multi": true,
+                "name": "VM_OID",
+                "options": [],
+                "query": "select oid\nfrom entity e\njoin scope s ON e.oid = s.scoped_oid\nwhere s.scoped_type = 'VIRTUAL_MACHINE'\nAND s.seed_oid IN (${GROUP_OID})",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 0,
+                "tagValuesQuery": "",
+                "tagsQuery": "",
+                "type": "query",
+                "useTags": false
+            }
+        ]
+    },
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "Utilization CPU, Memory, Disk",
+    "uid": "FzQ11234",
+    "version": 4,
+    "weekStart": ""
+}
