@@ -1,688 +1,645 @@
 {
-  "annotations": {
-    "list": [
-      {
-        "builtIn": 1,
-        "datasource": {
-          "type": "datasource",
-          "uid": "grafana"
-        },
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
-      }
-    ]
-  },
-  "editable": false,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
-  "id": 40,
-  "links": [],
-  "liveNow": false,
-  "panels": [
-    {
-      "datasource": {
-        "uid": "$DB"
-      },
-      "description": "This panel shows counts for the entire cluster based on the most recent date in the time selection",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "cellOptions": {
-              "type": "auto"
+    "annotations": {
+        "list": [{
+            "builtIn": 1,
+            "datasource": {
+                "type": "datasource",
+                "uid": "grafana"
             },
-            "inspect": false
-          },
-          "mappings": [
-            {
-              "options": {
-                "": {
-                  "text": ""
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+        }]
+    },
+    "editable": false,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": 40,
+    "links": [],
+    "liveNow": false,
+    "panels": [{
+            "datasource": {
+                "uid": "$DB"
+            },
+            "description": "This panel shows counts for the entire cluster based on the most recent date in the time selection",
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [{
+                        "options": {
+                            "": {
+                                "text": ""
+                            }
+                        },
+                        "type": "value"
+                    }],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [{
+                            "color": "green",
+                            "value": null
+                        }]
+                    },
+                    "unit": "none"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 6,
+                "w": 7,
+                "x": 0,
+                "y": 0
+            },
+            "id": 6,
+            "options": {
+                "cellHeight": "sm",
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true
+            },
+            "pluginVersion": "10.2.3",
+            "targets": [{
+                "datasource": {
+                    "uid": "$DB"
+                },
+                "format": "table",
+                "group": [],
+                "metricColumn": "none",
+                "rawQuery": true,
+                "rawSql": "WITH pm_data AS (\n  SELECT m.entity_oid,\n    avg((e.attrs -> 'num_cpus')::int) AS num_cpus,\n    avg(m.capacity) AS mem\n  FROM metric m,\n    scope_to($__timeTo()::timestamptz - INTERVAL '1 hour', $__timeTo(), 'PHYSICAL_MACHINE', ARRAY[${Cluster:raw} + 0]::bigint[], false) s,\n    entity e\n  WHERE m.entity_oid = s.oid\n    AND m.entity_oid = e.oid\n    AND m.time BETWEEN s.from_time AND s.to_time\n    AND m.time BETWEEN $__timeTo()::timestamptz - INTERVAL '1 hour' AND $__timeTo()\n    AND m.type = 'MEM'\n  GROUP BY 1\n),\npm_counts AS (\n  SELECT COUNT(DISTINCT entity_oid) as pm_count,\n    SUM(num_cpus) AS cpu_count,\n    SUM(mem) AS pm_mem\n  FROM pm_data\n),\nvm_data AS (\n  SELECT m.entity_oid,\n    avg((e.attrs -> 'num_cpus')::int) as num_vcpus,\n    avg(m.capacity) as vmem\n  FROM metric m,\n    scope_to($__timeTo()::timestamptz - INTERVAL '1 hour', $__timeTo(), 'VIRTUAL_MACHINE', ARRAY[${Cluster:raw} + 0]::bigint[], false) s,\n    entity e\n  WHERE m.entity_oid = s.oid\n    AND m.entity_oid = e.oid\n    AND m.time BETWEEN s.from_time AND s.to_time\n    AND m.time BETWEEN $__timeTo()::timestamptz - INTERVAL '1 hour' AND $__timeTo()\n    AND m.type = 'VMEM'\n  GROUP BY 1\n),\nvm_counts AS (\n  SELECT COUNT(DISTINCT entity_oid) AS vm_count,\n    SUM(num_vcpus) AS vcpu_count,\n    SUM(vmem) AS vm_vmem\n  FROM vm_data\n),\nstg_data AS (\n  SELECT m.entity_oid,\n    max(current) FILTER (WHERE m.type = 'STORAGE_AMOUNT') AS stg_used,\n    max(capacity) FILTER (WHERE m.type = 'STORAGE_AMOUNT') AS stg_cap,\n    max(current) FILTER (WHERE m.type = 'STORAGE_PROVISIONED') AS stg_prov\n  FROM metric m,\n    scope_to($__timeTo()::timestamptz - INTERVAL '1 hour', $__timeTo(), 'STORAGE', ARRAY[${Cluster:raw} + 0]::bigint[], false) s\n  WHERE m.entity_oid = s.oid\n    AND m.time BETWEEN s.from_time AND s.to_time\n    AND m.time BETWEEN $__timeTo()::timestamptz - INTERVAL '1 hour' AND $__timeTo()\n    AND m.type IN ('STORAGE_AMOUNT', 'STORAGE_PROVISIONED')\n  GROUP BY 1\n),\nstg_stats AS (\n  SELECT sum(stg_used) AS stg_used,\n    sum(stg_cap) AS stg_cap,\n    sum(stg_prov) AS stg_prov\n  FROM stg_data\n)\nSELECT\n  pm_count AS \"Hosts\",\n  vm_count AS \"VMs\",\n  pm_mem / 1024 / 1024 AS \"Memory Capacity\",\n  vm_vmem / 1024 / 1024 AS \"VMemory Provisioned\",\n  cpu_count AS \"Host CPUs\",\n  vcpu_count AS \"VCPUs Provisioned\",\n  stg_cap / 1024 AS \"Total Storage\",\n  (stg_cap - stg_used)/ 1024 AS \"Available Storage\",\n  stg_prov / 1024 AS \"Allocated Storage\"\nFROM pm_counts, vm_counts, stg_stats",
+                "refId": "A",
+                "select": [
+                    [{
+                        "params": [
+                            "savings"
+                        ],
+                        "type": "column"
+                    }]
+                ],
+                "table": "action_spec",
+                "timeColumn": "first_seen",
+                "timeColumnType": "timestamp",
+                "where": [{
+                    "name": "$__timeFilter",
+                    "params": [],
+                    "type": "macro"
+                }]
+            }],
+            "title": "Current Counts",
+            "transformations": [{
+                    "id": "organize",
+                    "options": {
+                        "excludeByName": {
+                            "Allocated Storage": true,
+                            "Available Storage": true,
+                            "Hosts": false,
+                            "Mem": true,
+                            "Mem Capacity": true,
+                            "Total Storage": true,
+                            "VMem": true,
+                            "VMem Provisioned": true,
+                            "VMs": false
+                        },
+                        "indexByName": {},
+                        "renameByName": {}
+                    }
+                },
+                {
+                    "id": "reduce",
+                    "options": {}
+                },
+                {
+                    "id": "organize",
+                    "options": {
+                        "excludeByName": {},
+                        "indexByName": {},
+                        "renameByName": {
+                            "Max": "Stats"
+                        }
+                    }
                 }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "none"
+            ],
+            "type": "table"
         },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 7,
-        "x": 0,
-        "y": 0
-      },
-      "id": 6,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
-        "showHeader": true
-      },
-      "pluginVersion": "10.2.3",
-      "targets": [
         {
-          "datasource": {
-            "uid": "$DB"
-          },
-          "format": "table",
-          "group": [],
-          "metricColumn": "none",
-          "rawQuery": true,
-          "rawSql": "WITH pm_data AS (\n  SELECT m.entity_oid,\n    avg((e.attrs -> 'num_cpus')::int) AS num_cpus,\n    avg(m.capacity) AS mem\n  FROM metric m,\n    scope_to($__timeTo()::timestamptz - INTERVAL '1 hour', $__timeTo(), 'PHYSICAL_MACHINE', ARRAY[${Cluster:raw} + 0]::bigint[], false) s,\n    entity e\n  WHERE m.entity_oid = s.oid\n    AND m.entity_oid = e.oid\n    AND m.time BETWEEN s.from_time AND s.to_time\n    AND m.time BETWEEN $__timeTo()::timestamptz - INTERVAL '1 hour' AND $__timeTo()\n    AND m.type = 'MEM'\n  GROUP BY 1\n),\npm_counts AS (\n  SELECT COUNT(DISTINCT entity_oid) as pm_count,\n    SUM(num_cpus) AS cpu_count,\n    SUM(mem) AS pm_mem\n  FROM pm_data\n),\nvm_data AS (\n  SELECT m.entity_oid,\n    avg((e.attrs -> 'num_cpus')::int) as num_vcpus,\n    avg(m.capacity) as vmem\n  FROM metric m,\n    scope_to($__timeTo()::timestamptz - INTERVAL '1 hour', $__timeTo(), 'VIRTUAL_MACHINE', ARRAY[${Cluster:raw} + 0]::bigint[], false) s,\n    entity e\n  WHERE m.entity_oid = s.oid\n    AND m.entity_oid = e.oid\n    AND m.time BETWEEN s.from_time AND s.to_time\n    AND m.time BETWEEN $__timeTo()::timestamptz - INTERVAL '1 hour' AND $__timeTo()\n    AND m.type = 'VMEM'\n  GROUP BY 1\n),\nvm_counts AS (\n  SELECT COUNT(DISTINCT entity_oid) AS vm_count,\n    SUM(num_vcpus) AS vcpu_count,\n    SUM(vmem) AS vm_vmem\n  FROM vm_data\n),\nstg_data AS (\n  SELECT m.entity_oid,\n    max(current) FILTER (WHERE m.type = 'STORAGE_AMOUNT') AS stg_used,\n    max(capacity) FILTER (WHERE m.type = 'STORAGE_AMOUNT') AS stg_cap,\n    max(current) FILTER (WHERE m.type = 'STORAGE_PROVISIONED') AS stg_prov\n  FROM metric m,\n    scope_to($__timeTo()::timestamptz - INTERVAL '1 hour', $__timeTo(), 'STORAGE', ARRAY[${Cluster:raw} + 0]::bigint[], false) s\n  WHERE m.entity_oid = s.oid\n    AND m.time BETWEEN s.from_time AND s.to_time\n    AND m.time BETWEEN $__timeTo()::timestamptz - INTERVAL '1 hour' AND $__timeTo()\n    AND m.type IN ('STORAGE_AMOUNT', 'STORAGE_PROVISIONED')\n  GROUP BY 1\n),\nstg_stats AS (\n  SELECT sum(stg_used) AS stg_used,\n    sum(stg_cap) AS stg_cap,\n    sum(stg_prov) AS stg_prov\n  FROM stg_data\n)\nSELECT\n  pm_count AS \"Hosts\",\n  vm_count AS \"VMs\",\n  pm_mem / 1024 / 1024 AS \"Memory Capacity\",\n  vm_vmem / 1024 / 1024 AS \"VMemory Provisioned\",\n  cpu_count AS \"Host CPUs\",\n  vcpu_count AS \"VCPUs Provisioned\",\n  stg_cap / 1024 AS \"Total Storage\",\n  (stg_cap - stg_used)/ 1024 AS \"Available Storage\",\n  stg_prov / 1024 AS \"Allocated Storage\"\nFROM pm_counts, vm_counts, stg_stats",
-          "refId": "A",
-          "select": [
-            [
-              {
-                "params": [
-                  "savings"
+            "aliasColors": {},
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": {
+                "uid": "$DB"
+            },
+            "decimals": 2,
+            "fieldConfig": {
+                "defaults": {
+                    "links": []
+                },
+                "overrides": []
+            },
+            "fill": 0,
+            "fillGradient": 0,
+            "gridPos": {
+                "h": 7,
+                "w": 17,
+                "x": 7,
+                "y": 0
+            },
+            "hiddenSeries": false,
+            "id": 4,
+            "legend": {
+                "avg": false,
+                "current": false,
+                "max": false,
+                "min": false,
+                "show": true,
+                "total": false,
+                "values": false
+            },
+            "lines": true,
+            "linewidth": 2,
+            "nullPointMode": "null",
+            "options": {
+                "alertThreshold": true
+            },
+            "percentage": false,
+            "pluginVersion": "10.2.3",
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [{
+                "datasource": {
+                    "uid": "$DB"
+                },
+                "format": "time_series",
+                "group": [],
+                "metricColumn": "none",
+                "rawQuery": true,
+                "rawSql": "WITH pm_counts AS (\n  SELECT\n    date_trunc('day', m.time) as time,\n    count(distinct m.entity_oid) as pm_count\n  FROM\n      metric m,\n      scope_to($__timeFrom(), $__timeTo(), 'PHYSICAL_MACHINE', ARRAY[${Cluster:raw} + 0], false) s\n  WHERE m.entity_oid = s.oid\n     AND m.time BETWEEN s.from_time AND s.to_time\n     AND m.time BETWEEN $__timeFrom() AND $__timeTo()\n     AND m.type = 'MEM'\n     AND m.time - date_trunc('day', m.time) < interval '10 minutes'\n   GROUP BY 1\n),\nvm_counts as (\n  SELECT\n    date_trunc('day', m.time) as time,\n    count(distinct oid) as vm_count\n  FROM\n    metric m,\n    scope_to($__timeFrom(), $__timeTo(), 'VIRTUAL_MACHINE', ARRAY[${Cluster:raw} + 0], false) s\n  WHERE m.entity_oid = s.oid\n     AND m.time BETWEEN s.from_time AND s.to_time\n     AND m.time BETWEEN $__timeFrom() AND $__timeTo()\n     AND m.type = 'VMEM'\n     AND m.time - date_trunc('day', m.time) < interval '10 minutes'\n    GROUP BY 1\n)\nSELECT\n  pm_counts.time as time,\n  pm_count as \"Hosts\",\n  vm_count as \"VMs\"\nFROM\n  pm_counts, vm_counts\nWHERE\n  pm_counts.time = vm_counts.time",
+                "refId": "A",
+                "select": [
+                    [{
+                        "params": [
+                            "value"
+                        ],
+                        "type": "column"
+                    }]
                 ],
-                "type": "column"
-              }
-            ]
-          ],
-          "table": "action_spec",
-          "timeColumn": "first_seen",
-          "timeColumnType": "timestamp",
-          "where": [
-            {
-              "name": "$__timeFilter",
-              "params": [],
-              "type": "macro"
-            }
-          ]
-        }
-      ],
-      "title": "Current Counts",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Allocated Storage": true,
-              "Available Storage": true,
-              "Hosts": false,
-              "Mem": true,
-              "Mem Capacity": true,
-              "Total Storage": true,
-              "VMem": true,
-              "VMem Provisioned": true,
-              "VMs": false
+                "timeColumn": "time",
+                "where": [{
+                    "name": "$__timeFilter",
+                    "params": [],
+                    "type": "macro"
+                }]
+            }],
+            "thresholds": [],
+            "timeRegions": [],
+            "title": "VM and Host Count Over Time",
+            "tooltip": {
+                "shared": true,
+                "sort": 0,
+                "value_type": "individual"
             },
-            "indexByName": {},
-            "renameByName": {}
-          }
-        },
-        {
-          "id": "reduce",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {},
-            "indexByName": {},
-            "renameByName": {
-              "Max": "Stats"
+            "transformations": [{
+                "id": "calculateField",
+                "options": {
+                    "alias": "VM / Host Ratio",
+                    "binary": {
+                        "left": "VMs",
+                        "operator": "/",
+                        "reducer": "sum",
+                        "right": "Hosts"
+                    },
+                    "mode": "binary",
+                    "reduce": {
+                        "reducer": "sum"
+                    }
+                }
+            }],
+            "type": "graph",
+            "xaxis": {
+                "mode": "time",
+                "show": true,
+                "values": []
+            },
+            "yaxes": [{
+                    "format": "short",
+                    "logBase": 1,
+                    "show": true
+                },
+                {
+                    "format": "short",
+                    "logBase": 1,
+                    "show": true
+                }
+            ],
+            "yaxis": {
+                "align": false
             }
-          }
-        }
-      ],
-      "type": "table"
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": {
-        "uid": "$DB"
-      },
-      "decimals": 2,
-      "fieldConfig": {
-        "defaults": {
-          "links": []
         },
-        "overrides": []
-      },
-      "fill": 0,
-      "fillGradient": 0,
-      "gridPos": {
-        "h": 7,
-        "w": 17,
-        "x": 7,
-        "y": 0
-      },
-      "hiddenSeries": false,
-      "id": 4,
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "lines": true,
-      "linewidth": 2,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "10.2.3",
-      "pointradius": 2,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
         {
-          "datasource": {
-            "uid": "$DB"
-          },
-          "format": "time_series",
-          "group": [],
-          "metricColumn": "none",
-          "rawQuery": true,
-          "rawSql": "WITH pm_counts AS (\n  SELECT\n    date_trunc('day', m.time) as time,\n    count(distinct m.entity_oid) as pm_count\n  FROM\n      metric m,\n      scope_to($__timeFrom(), $__timeTo(), 'PHYSICAL_MACHINE', ARRAY[${Cluster:raw} + 0], false) s\n  WHERE m.entity_oid = s.oid\n     AND m.time BETWEEN s.from_time AND s.to_time\n     AND m.time BETWEEN $__timeFrom() AND $__timeTo()\n     AND m.type = 'MEM'\n     AND m.time - date_trunc('day', m.time) < interval '10 minutes'\n   GROUP BY 1\n),\nvm_counts as (\n  SELECT\n    date_trunc('day', m.time) as time,\n    count(distinct oid) as vm_count\n  FROM\n    metric m,\n    scope_to($__timeFrom(), $__timeTo(), 'VIRTUAL_MACHINE', ARRAY[${Cluster:raw} + 0], false) s\n  WHERE m.entity_oid = s.oid\n     AND m.time BETWEEN s.from_time AND s.to_time\n     AND m.time BETWEEN $__timeFrom() AND $__timeTo()\n     AND m.type = 'VMEM'\n     AND m.time - date_trunc('day', m.time) < interval '10 minutes'\n    GROUP BY 1\n)\nSELECT\n  pm_counts.time as time,\n  pm_count as \"Hosts\",\n  vm_count as \"VMs\"\nFROM\n  pm_counts, vm_counts\nWHERE\n  pm_counts.time = vm_counts.time",
-          "refId": "A",
-          "select": [
-            [
-              {
-                "params": [
-                  "value"
+            "datasource": {
+                "type": "datasource",
+                "uid": "-- Dashboard --"
+            },
+            "description": "This panel shows current Memory and Storage stats across the cluster, based on the most recent date in the time selection.",
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [{
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    },
+                    "unit": "gbytes"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 7,
+                "w": 7,
+                "x": 0,
+                "y": 6
+            },
+            "id": 14,
+            "options": {
+                "cellHeight": "sm",
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [{
+                    "desc": false,
+                    "displayName": "Stats"
+                }]
+            },
+            "pluginVersion": "10.2.3",
+            "targets": [{
+                "datasource": {
+                    "type": "datasource",
+                    "uid": "-- Dashboard --"
+                },
+                "panelId": 6,
+                "refId": "A"
+            }],
+            "title": "Current Stats",
+            "transformations": [{
+                    "id": "filterFieldsByName",
+                    "options": {
+                        "include": {
+                            "names": [
+                                "Total Storage",
+                                "Available Storage",
+                                "Allocated Storage",
+                                "Memory Capacity",
+                                "VMemory Provisioned"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "id": "reduce",
+                    "options": {}
+                },
+                {
+                    "id": "organize",
+                    "options": {
+                        "excludeByName": {},
+                        "indexByName": {},
+                        "renameByName": {
+                            "Max": "Stats"
+                        }
+                    }
+                }
+            ],
+            "type": "table"
+        },
+        {
+            "aliasColors": {},
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": {
+                "uid": "$DB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "links": [],
+                    "unit": "mbytes"
+                },
+                "overrides": []
+            },
+            "fill": 0,
+            "fillGradient": 0,
+            "gridPos": {
+                "h": 7,
+                "w": 17,
+                "x": 7,
+                "y": 7
+            },
+            "hiddenSeries": false,
+            "id": 10,
+            "legend": {
+                "avg": false,
+                "current": false,
+                "max": false,
+                "min": false,
+                "show": true,
+                "total": false,
+                "values": false
+            },
+            "lines": true,
+            "linewidth": 2,
+            "nullPointMode": "null",
+            "options": {
+                "alertThreshold": true
+            },
+            "percentage": false,
+            "pluginVersion": "10.2.3",
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [{
+                    "alias": "Total Storage",
+                    "color": "#37872D"
+                },
+                {
+                    "alias": "Allocated Storage",
+                    "color": "#E0B400"
+                },
+                {
+                    "alias": "Used Storage",
+                    "color": "#8AB8FF"
+                }
+            ],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [{
+                "datasource": {
+                    "uid": "$DB"
+                },
+                "format": "time_series",
+                "group": [],
+                "metricColumn": "none",
+                "rawQuery": true,
+                "rawSql": "SELECT\n   time,\n   sum(stor_cap) as \"Total Storage\",\n   sum(stor_used) as \"Used Storage\",\n   sum(stor_prov) as \"Allocated Storage\"\n FROM\n   (SELECT\n     date_trunc('day', m.time) as time,\n     m.entity_oid,\n     MAX(current) FILTER (WHERE m.type = 'STORAGE_AMOUNT') as stor_used,\n     MAX(capacity) FILTER (WHERE m.type = 'STORAGE_AMOUNT') as stor_cap,\n     MAX(current) FILTER (WHERE m.type = 'STORAGE_PROVISIONED') as stor_prov\n   FROM\n     metric m,\n     scope_to($__timeFrom(), $__timeTo(), 'STORAGE', ARRAY[${Cluster:raw}+0]::bigint[], '${Cluster:raw}' = '0') s\n   WHERE\n     m.entity_oid = s.oid\n     AND m.time BETWEEN s.from_time AND s.to_time\n     AND m.type in ('STORAGE_AMOUNT', 'STORAGE_PROVISIONED')\n     AND m.time between $__timeFrom() and $__timeTo()\n   GROUP BY 1, 2) AS data\n GROUP BY 1",
+                "refId": "A",
+                "select": [
+                    [{
+                        "params": [
+                            "savings"
+                        ],
+                        "type": "column"
+                    }]
                 ],
-                "type": "column"
-              }
-            ]
-          ],
-          "timeColumn": "time",
-          "where": [
-            {
-              "name": "$__timeFilter",
-              "params": [],
-              "type": "macro"
-            }
-          ]
-        }
-      ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "VM and Host Count Over Time",
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "transformations": [
-        {
-          "id": "calculateField",
-          "options": {
-            "alias": "VM / Host Ratio",
-            "binary": {
-              "left": "VMs",
-              "operator": "/",
-              "reducer": "sum",
-              "right": "Hosts"
+                "table": "action_spec",
+                "timeColumn": "first_seen",
+                "timeColumnType": "timestamp",
+                "where": [{
+                    "name": "$__timeFilter",
+                    "params": [],
+                    "type": "macro"
+                }]
+            }],
+            "thresholds": [],
+            "timeRegions": [],
+            "title": "Storage Over Time",
+            "tooltip": {
+                "shared": true,
+                "sort": 0,
+                "value_type": "individual"
             },
-            "mode": "binary",
-            "reduce": {
-              "reducer": "sum"
+            "transformations": [],
+            "type": "graph",
+            "xaxis": {
+                "mode": "time",
+                "show": true,
+                "values": []
+            },
+            "yaxes": [{
+                    "format": "mbytes",
+                    "logBase": 1,
+                    "show": true
+                },
+                {
+                    "format": "short",
+                    "logBase": 1,
+                    "show": true
+                }
+            ],
+            "yaxis": {
+                "align": false
             }
-          }
-        }
-      ],
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "short",
-          "logBase": 1,
-          "show": true
         },
         {
-          "format": "short",
-          "logBase": 1,
-          "show": true
+            "aliasColors": {},
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": {
+                "uid": "$DB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "links": [],
+                    "unit": "percent"
+                },
+                "overrides": []
+            },
+            "fill": 0,
+            "fillGradient": 0,
+            "gridPos": {
+                "h": 7,
+                "w": 17,
+                "x": 7,
+                "y": 14
+            },
+            "hiddenSeries": false,
+            "id": 12,
+            "legend": {
+                "avg": false,
+                "current": false,
+                "max": false,
+                "min": false,
+                "show": true,
+                "total": false,
+                "values": false
+            },
+            "lines": true,
+            "linewidth": 2,
+            "nullPointMode": "null",
+            "options": {
+                "alertThreshold": true
+            },
+            "percentage": false,
+            "pluginVersion": "10.2.3",
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [{
+                "datasource": {
+                    "uid": "$DB"
+                },
+                "format": "time_series",
+                "group": [],
+                "metricColumn": "none",
+                "rawQuery": true,
+                "rawSql": "SELECT\n  date_trunc('day', m.time) AS time,\n   sum(m.current) FILTER (WHERE m.type = 'CPU') /\n      sum(m.capacity) FILTER (WHERE m.type = 'CPU') * 100 AS \"CPU Utilization\",\n   sum(m.current) FILTER (WHERE m.type = 'MEM') /\n      sum(m.capacity) FILTER (WHERE m.type = 'MEM') * 100 AS \"Memory Utilization\"\nFROM metric m,\n  scope_to($__timeFrom(), $__timeTo(), 'PHYSICAL_MACHINE', ARRAY[${Cluster:raw} + 0]::bigint[], false) s\nWHERE\n  m.entity_oid = s.oid\n  AND m.time BETWEEN s.from_time AND s.to_time\n  AND m.type IN ('MEM', 'CPU')\n  AND m.time BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1\nORDER BY 1",
+                "refId": "A",
+                "select": [
+                    [{
+                        "params": [
+                            "value"
+                        ],
+                        "type": "column"
+                    }]
+                ],
+                "timeColumn": "time",
+                "where": [{
+                    "name": "$__timeFilter",
+                    "params": [],
+                    "type": "macro"
+                }]
+            }],
+            "thresholds": [],
+            "timeRegions": [],
+            "title": "CPU and Memory Utilization Over Time",
+            "tooltip": {
+                "shared": true,
+                "sort": 0,
+                "value_type": "individual"
+            },
+            "type": "graph",
+            "xaxis": {
+                "mode": "time",
+                "show": true,
+                "values": []
+            },
+            "yaxes": [{
+                    "format": "percent",
+                    "logBase": 1,
+                    "show": true
+                },
+                {
+                    "format": "short",
+                    "logBase": 1,
+                    "show": true
+                }
+            ],
+            "yaxis": {
+                "align": false
+            }
         }
-      ],
-      "yaxis": {
-        "align": false
-      }
+    ],
+    "refresh": "",
+    "schemaVersion": 39,
+    "tags": [],
+    "templating": {
+        "list": [{
+            "current": {
+                "selected": false,
+                "text": "Turbo Timescale",
+                "value": "izlauSYVz"
+            },
+            "hide": 2,
+            "includeAll": false,
+            "multi": false,
+            "name": "DB",
+            "options": [],
+            "query": "postgres",
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "type": "datasource"
+        }, {
+            "current": {
+                "selected": true,
+                "text": [
+                    "All"
+                ],
+                "value": [
+                    "$__all"
+                ]
+            },
+            "datasource": {
+                "uid": "$DB"
+            },
+            "definition": "SELECT\n  name as __text,\n  oid as __value\nFROM\n  entity\nWHERE\n  entity.type = 'COMPUTE_CLUSTER'\n  AND ($__timeFrom(),$__timeTo()) OVERLAPS (first_seen, last_seen)\nORDER BY 1",
+            "hide": 0,
+            "includeAll": true,
+            "multi": true,
+            "name": "Cluster",
+            "options": [],
+            "query": "SELECT\n  name as __text,\n  oid as __value\nFROM\n  entity\nWHERE\n  entity.type = 'COMPUTE_CLUSTER'\n  AND ($__timeFrom(),$__timeTo()) OVERLAPS (first_seen, last_seen)\nORDER BY 1",
+            "refresh": 2,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 0,
+            "tagValuesQuery": "",
+            "tagsQuery": "",
+            "type": "query",
+            "useTags": false
+        }]
     },
-    {
-      "datasource": {
-        "type": "datasource",
-        "uid": "-- Dashboard --"
-      },
-      "description": "This panel shows current Memory and Storage stats across the cluster, based on the most recent date in the time selection.",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "cellOptions": {
-              "type": "auto"
-            },
-            "inspect": false
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "gbytes"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 7,
-        "x": 0,
-        "y": 6
-      },
-      "id": 14,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": false,
-            "displayName": "Stats"
-          }
+    "time": {
+        "from": "now-7d",
+        "to": "now"
+    },
+    "timepicker": {
+        "refresh_intervals": [
+            "10s",
+            "30s",
+            "1m",
+            "5m",
+            "15m",
+            "30m",
+            "1h",
+            "2h",
+            "1d"
         ]
-      },
-      "pluginVersion": "10.2.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "datasource",
-            "uid": "-- Dashboard --"
-          },
-          "panelId": 6,
-          "refId": "A"
-        }
-      ],
-      "title": "Current Stats",
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "Total Storage",
-                "Available Storage",
-                "Allocated Storage",
-                "Memory Capacity",
-                "VMemory Provisioned"
-              ]
-            }
-          }
-        },
-        {
-          "id": "reduce",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {},
-            "indexByName": {},
-            "renameByName": {
-              "Max": "Stats"
-            }
-          }
-        }
-      ],
-      "type": "table"
     },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": {
-        "uid": "$DB"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "links": [],
-          "unit": "mbytes"
-        },
-        "overrides": []
-      },
-      "fill": 0,
-      "fillGradient": 0,
-      "gridPos": {
-        "h": 7,
-        "w": 17,
-        "x": 7,
-        "y": 7
-      },
-      "hiddenSeries": false,
-      "id": 10,
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "lines": true,
-      "linewidth": 2,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "10.2.3",
-      "pointradius": 2,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [
-        {
-          "alias": "Total Storage",
-          "color": "#37872D"
-        },
-        {
-          "alias": "Allocated Storage",
-          "color": "#E0B400"
-        },
-        {
-          "alias": "Used Storage",
-          "color": "#8AB8FF"
-        }
-      ],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "datasource": {
-            "uid": "$DB"
-          },
-          "format": "time_series",
-          "group": [],
-          "metricColumn": "none",
-          "rawQuery": true,
-          "rawSql": "SELECT\n   time,\n   sum(stor_cap) as \"Total Storage\",\n   sum(stor_used) as \"Used Storage\",\n   sum(stor_prov) as \"Allocated Storage\"\n FROM\n   (SELECT\n     date_trunc('day', m.time) as time,\n     m.entity_oid,\n     MAX(current) FILTER (WHERE m.type = 'STORAGE_AMOUNT') as stor_used,\n     MAX(capacity) FILTER (WHERE m.type = 'STORAGE_AMOUNT') as stor_cap,\n     MAX(current) FILTER (WHERE m.type = 'STORAGE_PROVISIONED') as stor_prov\n   FROM\n     metric m,\n     scope_to($__timeFrom(), $__timeTo(), 'STORAGE', ARRAY[${Cluster:raw}+0]::bigint[], '${Cluster:raw}' = '0') s\n   WHERE\n     m.entity_oid = s.oid\n     AND m.time BETWEEN s.from_time AND s.to_time\n     AND m.type in ('STORAGE_AMOUNT', 'STORAGE_PROVISIONED')\n     AND m.time between $__timeFrom() and $__timeTo()\n   GROUP BY 1, 2) AS data\n GROUP BY 1",
-          "refId": "A",
-          "select": [
-            [
-              {
-                "params": [
-                  "savings"
-                ],
-                "type": "column"
-              }
-            ]
-          ],
-          "table": "action_spec",
-          "timeColumn": "first_seen",
-          "timeColumnType": "timestamp",
-          "where": [
-            {
-              "name": "$__timeFilter",
-              "params": [],
-              "type": "macro"
-            }
-          ]
-        }
-      ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "Storage Over Time",
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "transformations": [],
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "mbytes",
-          "logBase": 1,
-          "show": true
-        },
-        {
-          "format": "short",
-          "logBase": 1,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false
-      }
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": {
-        "uid": "$DB"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "links": [],
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "fill": 0,
-      "fillGradient": 0,
-      "gridPos": {
-        "h": 7,
-        "w": 17,
-        "x": 7,
-        "y": 14
-      },
-      "hiddenSeries": false,
-      "id": 12,
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "lines": true,
-      "linewidth": 2,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "10.2.3",
-      "pointradius": 2,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "datasource": {
-            "uid": "$DB"
-          },
-          "format": "time_series",
-          "group": [],
-          "metricColumn": "none",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  date_trunc('day', m.time) AS time,\n   sum(m.current) FILTER (WHERE m.type = 'CPU') /\n      sum(m.capacity) FILTER (WHERE m.type = 'CPU') * 100 AS \"CPU Utilization\",\n   sum(m.current) FILTER (WHERE m.type = 'MEM') /\n      sum(m.capacity) FILTER (WHERE m.type = 'MEM') * 100 AS \"Memory Utilization\"\nFROM metric m,\n  scope_to($__timeFrom(), $__timeTo(), 'PHYSICAL_MACHINE', ARRAY[${Cluster:raw} + 0]::bigint[], false) s\nWHERE\n  m.entity_oid = s.oid\n  AND m.time BETWEEN s.from_time AND s.to_time\n  AND m.type IN ('MEM', 'CPU')\n  AND m.time BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1\nORDER BY 1",
-          "refId": "A",
-          "select": [
-            [
-              {
-                "params": [
-                  "value"
-                ],
-                "type": "column"
-              }
-            ]
-          ],
-          "timeColumn": "time",
-          "where": [
-            {
-              "name": "$__timeFilter",
-              "params": [],
-              "type": "macro"
-            }
-          ]
-        }
-      ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "CPU and Memory Utilization Over Time",
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "percent",
-          "logBase": 1,
-          "show": true
-        },
-        {
-          "format": "short",
-          "logBase": 1,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false
-      }
-    }
-  ],
-  "refresh": "",
-  "schemaVersion": 39,
-  "tags": [],
-  "templating": {
-    "list": [
-      {
-        "current": {
-          "selected": false,
-          "text": "Turbo Timescale",
-          "value": "izlauSYVz"
-        },
-        "hide": 2,
-        "includeAll": false,
-        "multi": false,
-        "name": "DB",
-        "options": [],
-        "query": "postgres",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
-        "current": {
-          "selected": false,
-          "text": "RTP/Dell",
-          "value": "286467069326593"
-        },
-        "datasource": {
-          "uid": "$DB"
-        },
-        "definition": "",
-        "hide": 0,
-        "includeAll": false,
-        "multi": false,
-        "name": "Cluster",
-        "options": [],
-        "query": "SELECT\n  name as __text,\n  oid as __value\nFROM\n  entity\nWHERE\n  entity.type = 'COMPUTE_CLUSTER'\n  AND ($__timeFrom(),$__timeTo()) OVERLAPS (first_seen, last_seen)\nORDER BY 1",
-        "refresh": 2,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
-        "tagValuesQuery": "",
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
-      }
-    ]
-  },
-  "time": {
-    "from": "now-7d",
-    "to": "now"
-  },
-  "timepicker": {
-    "refresh_intervals": [
-      "10s",
-      "30s",
-      "1m",
-      "5m",
-      "15m",
-      "30m",
-      "1h",
-      "2h",
-      "1d"
-    ]
-  },
-  "timezone": "",
-  "title": "Host Utilization Per Cluster",
-  "uid": "host_utilization_per_cluster",
-  "version": 34,
-  "weekStart": ""
+    "timezone": "",
+    "title": "Host Utilization Per Cluster",
+    "uid": "host_utilization_per_cluster",
+    "version": 34,
+    "weekStart": ""
 }
